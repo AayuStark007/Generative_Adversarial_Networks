@@ -44,24 +44,27 @@ def BCELoss(x, y):
 
 
 # define Generator
-G_W0 = np.random.random((Z_dim, h_dim)) - 1
-G_W1 = np.random.random((h_dim, X_dim)) - 1
+G_W0 = np.random.randn(Z_dim, h_dim).astype(np.float32) * np.sqrt(2.0/(Z_dim))
+G_b0 = np.zeros([h_dim]).astype(np.float32)
+G_W1 = np.random.randn(h_dim, X_dim).astype(np.float32) * np.sqrt(2.0/(h_dim))
+G_b1 = np.zeros([X_dim]).astype(np.float32)
 
 def generator_fwd(x):
 	l0 = x
-	l1 = relu(l0.dot(G_W0))
-	l2 = sigmoid(l1.dot(G_W1))
+	l1 = relu(l0.dot(G_W0) + G_b0)
+	l2 = sigmoid(l1.dot(G_W1) + G_b1)
 	return l2
 
 # define Discriminator
-D_W0 = np.random.random((X_dim, h_dim)) - 1
-D_W1 = np.random.random((h_dim, 1)) - 1
+D_W0 = np.random.randn(X_dim, h_dim).astype(np.float32) * np.sqrt(2.0/(X_dim))
+D_b0 = np.zeros([h_dim]).astype(np.float32)
+D_W1 = np.random.randn(h_dim, 1).astype(np.float32) * np.sqrt(2.0/(h_dim))
+D_b1 = np.zeros([1]).astype(np.float32)
 
 def discriminator_fwd(x):
 	l0 = x
-	l_1 = l0.dot(D_W0)
-	l1 = relu(l_1)
-	l2 = sigmoid(l1.dot(D_W1))
+	l1 = relu(l0.dot(D_W0) + D_b0)
+	l2 = sigmoid(l1.dot(D_W1) + D_b1)
 	return l2
 
 ones_label = np.ones((mb_size, 1))
