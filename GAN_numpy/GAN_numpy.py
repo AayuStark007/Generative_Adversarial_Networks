@@ -10,8 +10,8 @@ mb_size = 64
 Z_dim = 100
 X_dim = 28*28
 h_dim = 128
-lr = 1e-3
-m_epoch = 1
+lr = 0.0002
+m_epoch = 5
 
 try:
 	os.makedirs('out-np-gan')
@@ -33,42 +33,102 @@ def sigmoid(x, deriv=False):
 		return x * (1 - x)
 	return 1 / (1 + np.exp(-x))
 
-def relu(x):
+def relu(x, deriv=False):
+	if deriv:
+		x[x > 0] = 1
+		return x	
 	return np.maximum(x, 0, x)
 
 def BCELoss(x, y):
 	dx = 1e-12
-	return -np.mean((x*np.log(y+dx)) + ((1-x) * np.log(1-y+dx))) 
 
+	loss_v = (y*np.log(x)) + ((1-y)*np.log(1-x))
+	return np.abs(loss_v)
 
+class Generator():
 
+	def __init__(self):
+		self.W0 = np.random.randn(Z_dim, h_dim).astype(np.float32) * np.sqrt(2.0/(Z_dim))
+		self.b0 = np.zeros([h_dim]).astype(np.float32)
+		self.W1 = np.random.randn(h_dim, X_dim).astype(np.float32) * np.sqrt(2.0/(h_dim))
+		self.b1 = np.zeros([X_dim]).astype(np.float32)
 
-# define Generator
-G_W0 = np.random.randn(Z_dim, h_dim).astype(np.float32) * np.sqrt(2.0/(Z_dim))
-G_b0 = np.zeros([h_dim]).astype(np.float32)
-G_W1 = np.random.randn(h_dim, X_dim).astype(np.float32) * np.sqrt(2.0/(h_dim))
-G_b1 = np.zeros([X_dim]).astype(np.float32)
+		self.l0 = np.ndarray(shape=(mb_size, Z_dim), dtype=np.float32)
+		self.l1 = np.ndarray(shape=(mb_size, h_dim), dtype=np.float32)
+		self.l2 = np.ndarray(shape=(mb_size, X_dim), dtype=np.float32)
 
-def generator_fwd(x):
-	l0 = x
-	l1 = relu(l0.dot(G_W0) + G_b0)
-	l2 = sigmoid(l1.dot(G_W1) + G_b1)
-	return l2
+		self.l2_delta = np.ndarray(shape=(mb_size, X_dim), dtype=np.float32)
+		self.l1_error = np.ndarray(shape=(mb_size, h_dim), dtype=np.float32)
+		self.l1_delta = np.ndarray(shape=(mb_size, h_dim), dtype=np.float32)
 
-# define Discriminator
-D_W0 = np.random.randn(X_dim, h_dim).astype(np.float32) * np.sqrt(2.0/(X_dim))
-D_b0 = np.zeros([h_dim]).astype(np.float32)
-D_W1 = np.random.randn(h_dim, 1).astype(np.float32) * np.sqrt(2.0/(h_dim))
-D_b1 = np.zeros([1]).astype(np.float32)
+	def forward(self, x):
+		self.l0 = x
+		self.l1 = relu(np.dot(self.l0, self.W0) + self.b0)
+		self.l2 = sigmoid(self.l1.dot(self.W1) + self.b1)
 
-def discriminator_fwd(x):
-	l0 = x
-	l1 = relu(l0.dot(D_W0) + D_b0)
-	l2 = sigmoid(l1.dot(D_W1) + D_b1)
-	return l2
+		return self.l2
+
+	def backward(self, l2_error):
+		self.l2_delta += np.multiply(l2_error, sigmoid(self.l2, deriv=True))
+		self.l1_error += self.l2_delta.dot(self.W1.T)
+		self.l1_delta += np.multiply(self.l1_error, relu(self.l1, deriv=True))
+
+	def step(self):
+		self.W1 += -1.0 * lr * self.l1.T.dot(self.l2_delta)
+		self.W0 += -1.0 * lr * self.l0.T.dot(self.l1_delta) 
+		self.reset_grad()
+
+	def reset_grad(self):
+		self.l2_delta.fill(0.0)
+		self.l1_error.fill(0.0)
+		self.l1_delta.fill(0.0)
+
+class Discriminator():
+
+	def __init__(self):
+		self.W0 = np.random.randn(X_dim, h_dim).astype(np.float32) * np.sqrt(2.0/(X_dim))
+		self.b0 = np.zeros([h_dim]).astype(np.float32)
+		self.W1 = np.random.randn(h_dim, 1).astype(np.float32) * np.sqrt(2.0/(h_dim))
+		self.b1 = np.zeros([1]).astype(np.float32)
+
+		self.l0 = np.ndarray(shape=(mb_size, X_dim), dtype=np.float32)
+		self.l1 = np.ndarray(shape=(mb_size, h_dim), dtype=np.float32)
+		self.l2 = np.ndarray(shape=(mb_size, 1), dtype=np.float32)
+
+		self.l2_delta = np.ndarray(shape=(mb_size, 1), dtype=np.float32)
+		self.l1_error = np.ndarray(shape=(mb_size, h_dim), dtype=np.float32)
+		self.l1_delta = np.ndarray(shape=(mb_size, h_dim), dtype=np.float32)
+
+	def forward(self, x):
+		self.l0 = x
+		self.l1 = relu(self.l0.dot(self.W0) + self.b0)
+		self.l2 = sigmoid(self.l1.dot(self.W1) + self.b1)
+
+		return self.l2
+
+	def backward(self, l2_error):
+		self.l2_delta += np.multiply(l2_error, sigmoid(self.l2, deriv=True))
+		self.l1_error += self.l2_delta.dot(self.W1.T)
+		self.l1_delta += np.multiply(self.l1_error, relu(self.l1, deriv=True))
+
+	def step(self):
+		self.W1 += -1.0 * lr * self.l1.T.dot(self.l2_delta)
+		self.W0 += -1.0 * lr * self.l0.T.dot(self.l1_delta) 
+		self.reset_grad()
+
+	def reset_grad(self):
+		self.l2_delta.fill(0.0)
+		self.l1_error.fill(0.0)
+		self.l1_delta.fill(0.0)
 
 ones_label = np.ones((mb_size, 1))
 zeros_label = np.zeros((mb_size, 1))
+
+G = Generator()
+D = Discriminator()
+
+G.reset_grad()
+D.reset_grad()
 
 for epoch in range(m_epoch):
 	for i, (data, _) in enumerate(dataloader):
@@ -79,34 +139,43 @@ for epoch in range(m_epoch):
 		
 		X = np.resize(X, (mb_size, X_dim))
 
-		G_sample = generator_fwd(z)
-		D_real = discriminator_fwd(X)
-		D_fake = discriminator_fwd(G_sample)
+		G_sample = G.forward(z)
+		D_real = D.forward(X)
+		D_fake = D.forward(G_sample)
 
 		D_loss_real = BCELoss(D_real, ones_label)
 		D_loss_fake = BCELoss(D_fake, zeros_label)
 		D_loss = D_loss_real + D_loss_fake
 
+		#print('backprop D')
+
 		# backprop D
 		#######
+		D.backward(D_loss_real)
+		D.backward(D_loss_fake)
+		D.step()
 
 		# train generator
 		z = np.random.random((mb_size, Z_dim))
-		G_sample = generator_fwd(z)
-		D_fake = discriminator_fwd(G_sample)
+		G_sample = G.forward(z)
+		D_fake = D.forward(G_sample)
 
 		G_loss = BCELoss(D_fake, ones_label)
 
+		#print('backprop G')
+
 		# backprop G
 		########
+		G.backward(G_loss)
+		G.step()
 
 		# Print and plot every now and then
 		if i % 1000 == 0:
-			print('Epoch-{}; D_loss: {}; G_loss: {}'.format(epoch, D_loss, G_loss))
+			print('Epoch-{}; D_loss: {}; G_loss: {}'.format(epoch, np.mean(D_loss), np.mean(G_loss)))
 			#dis_loss.append(D_loss)
 			#gen_loss.append(G_loss)
 
-			samples = generator_fwd(z)[:16]
+			samples = G.forward(z)[:16]
 
 			fig = plt.figure(figsize=(4, 4))
 			gs = gridspec.GridSpec(4, 4)
