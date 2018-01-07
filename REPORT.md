@@ -24,6 +24,7 @@ Generative Adversarial Networks are basically a class of unsupervised machine le
 <br>
 
 **MNIST Results @ 10K iterations vs 100K iterations:**
+
 |After 10K iterations      |  After 100K iterations |
 |:-------------------------:|:-------------------------:|
 |![After 10K iterations](./Report_Imgs/009.png)  |  ![After 100K iterations](./Report_Imgs/099.png)|
@@ -51,6 +52,7 @@ Although, DCGAN had been implemented in the project, I decided to code my own im
 <br>
 
 **DCGAN CIFAR10 results - Real vs Generated @ 25 epochs:**
+
 |Real Sample           |  Fake Generated |
 |:-------------------------:|:-------------------------:|
 |![CIFAR10 Real Sample](./Report_Imgs/real.png)  |  ![CIFAR10 Fake Sample](./Report_Imgs/gen-ep-25.png)|
